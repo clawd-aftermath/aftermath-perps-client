@@ -1,0 +1,8 @@
+aftermath-perps-client
+Copyright 2026 Aftermath Finance
+
+The package's modular client/store architecture was informed by the public,
+MIT-licensed lighter-ts project by Elliot Technologies, Inc.:
+https://github.com/elliottech/lighter-ts
+
+No lighter-ts source code is included or mechanically forked.
