@@ -81,6 +81,18 @@ afterEach(() => {
 });
 
 describe("createPerpsStore orderbook semantics", () => {
+  it("atomically replaces account-scoped collections and removes stale entities", async () => {
+    const store = createPerpsStore({ snapshotSource: { fetchSnapshot: async () => ({ data: emptyPerpsData() }) } });
+    await store.start();
+    const position = (id: string, accountId: string) => ({ id, accountId, marketId: "m", side: "buy" as const, size: "1", collateral: null, leverage: null, entryPrice: null, marginRatio: null, raw: null });
+    store.applyDelta({ kind: "replaceScope", collection: "positions", accountId: "a", values: [position("a:m", "a")] });
+    store.applyDelta({ kind: "replaceScope", collection: "positions", accountId: "b", values: [position("b:m", "b")] });
+    store.applyDelta({ kind: "replaceScope", collection: "positions", accountId: "a", values: [] });
+    expect(store.getState().positions["a:m"]).toBeUndefined();
+    expect(store.getState().positions["b:m"]).toBeDefined();
+    store.stop();
+  });
+
   it("merges incremental levels, removes zero sizes, and sorts canonically", async () => {
     const store = createPerpsStore({
       snapshotSource: {

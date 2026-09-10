@@ -1,5 +1,6 @@
 import type {
   Account,
+  Candle,
   Funding,
   Market,
   MarketPrice,
@@ -102,3 +103,35 @@ export const selectFunding =
 
 export const selectVaults = (state: PerpsState): readonly Vault[] =>
   vaultValues(state.vaults);
+
+function accountValues<T extends { readonly accountId: string }>(
+  getCollection: (state: PerpsState) => Readonly<Record<string, T>>,
+  accountId: string,
+) {
+  let source: Readonly<Record<string, T>> | null = null;
+  let result: readonly T[] = [];
+  return (state: PerpsState): readonly T[] => {
+    const next = getCollection(state);
+    if (next !== source) {
+      source = next;
+      result = Object.values(next).filter((value) => value.accountId === accountId);
+    }
+    return result;
+  };
+}
+export const selectAccountStops = (accountId: string) => accountValues((state) => state.stops, accountId);
+export const selectAccountTwaps = (accountId: string) => accountValues((state) => state.twaps, accountId);
+export const selectAccountFills = (accountId: string) => accountValues((state) => state.fills, accountId);
+export const selectAccountHistory = (accountId: string) => accountValues((state) => state.history, accountId);
+export const selectAccountFundingPayments = (accountId: string) => accountValues((state) => state.fundingPayments, accountId);
+export const selectCandles = (marketId: string, interval?: string) => {
+  let source: PerpsState["candles"] | null = null;
+  let result: readonly Candle[] = [];
+  return (state: PerpsState) => {
+    if (state.candles !== source) {
+      source = state.candles;
+      result = Object.values(state.candles).filter((value) => value.marketId === marketId && (interval === undefined || value.interval === interval));
+    }
+    return result;
+  };
+};

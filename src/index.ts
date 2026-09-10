@@ -1,3 +1,4 @@
+export * from "./account.js";
 export * from "./decimal.js";
 export * from "./execution.js";
 export * from "./market-maker.js";

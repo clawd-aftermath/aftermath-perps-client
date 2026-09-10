@@ -28,6 +28,37 @@ function json(value: unknown, init?: ResponseInit): Response {
 }
 
 describe("Aftermath native adapter", () => {
+  it("decodes authenticated user, order-history, and collateral-history payloads", () => {
+    const user = decodeAftermathMessage({
+      user: {
+        account: { accountId: 7n, positions: [], availableCollateral: 10, availableCollateralUsd: 10, totalEquityUsd: 11 },
+        stopOrders: [{ objectId: "0xstop", marketId: "0xmarket", side: 0, size: 2n, nonSlTp: { stopIndexPrice: 3, reduceOnly: true, triggerIfGeStopIndexPrice: true, triggerPriceType: 0 } }],
+        twapOrders: [{ twapOrderObjectId: "0xtwap", processedAmount: 2n, details: { marketId: "0xmarket", side: 1, size: 10n, expireTimestamp: 1000n } }],
+      },
+    });
+    expect(user).toEqual(expect.arrayContaining([
+      expect.objectContaining({ collection: "accounts", value: expect.objectContaining({ id: "7" }) }),
+      expect.objectContaining({ collection: "stops", values: [expect.objectContaining({ id: "0xstop", triggerPrice: "3" })] }),
+      expect.objectContaining({ collection: "twaps", values: [expect.objectContaining({ id: "0xtwap", remainingSize: "8" })] }),
+    ]));
+
+    const orders = decodeAftermathMessage({ userOrders: { accountId: 7n, orders: [
+      { timestamp: 123, txDigest: "digest", marketId: "0xmarket", eventType: "FilledTakerOrder", side: 0, price: 2, size: 3, orderId: "9" },
+      { timestamp: 123, txDigest: "digest", marketId: "0xmarket", eventType: "LiquidatedPosition", side: 0, price: 2, size: 3, pnl: -1 },
+    ] } });
+    expect(orders.map((delta) => delta.kind === "upsert" ? delta.collection : delta.kind)).toEqual(["history", "fills", "history"]);
+
+    const collateral = decodeAftermathMessage({ userCollateralChanges: { accountId: 7n, collateralChanges: [{ timestamp: 124, txDigest: "digest2", marketId: "0xmarket", eventType: "SettledFunding", collateralChange: 5, collateralChangeUsd: 5 }] } });
+    expect(collateral).toEqual([
+      expect.objectContaining({ collection: "history", value: expect.objectContaining({ accountId: "7", type: "SettledFunding" }) }),
+      expect.objectContaining({ collection: "fundingPayments", value: expect.objectContaining({ amount: "5" }) }),
+    ]);
+
+    expect(decodeAftermathMessage({ marketCandles: { marketId: "0xmarket", interval: "1m", lastCandle: { timestamp: 100, open: 1, high: 3, low: 0.5, close: 2, volume: 9 } } })).toEqual([
+      expect.objectContaining({ collection: "candles", value: expect.objectContaining({ id: "0xmarket:1m:100", close: "2" }) }),
+    ]);
+  });
+
   it("maps checked SDK fixtures and correlates orderbooks positionally", async () => {
     const bodies: Record<string, unknown> = {};
     const headers: Record<string, Headers> = {};

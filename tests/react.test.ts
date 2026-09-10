@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { subscribeWithSelector } from "../src/react.js";
 import {
   selectAccountPositions,
+  selectAccountStops,
+  selectCandles,
   selectMarkets,
   selectVaults,
 } from "../src/selectors.js";
@@ -121,5 +123,10 @@ describe("React selector subscriptions", () => {
       },
     } satisfies PerpsState;
     expect(accountPositions(unrelatedState)).toBe(accountPositions(state));
+
+    const accountStops = selectAccountStops("a");
+    const candles = selectCandles("m", "1m");
+    expect(accountStops(unrelatedState)).toBe(accountStops(state));
+    expect(candles(unrelatedState)).toEqual([]);
   });
 });

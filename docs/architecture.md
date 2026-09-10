@@ -3,7 +3,8 @@
 The package has five deliberately separate layers:
 
 1. **Domain store** — immutable snapshots for markets, prices/oracles,
-   orderbooks, accounts, positions, orders, collateral, funding, and vaults.
+   orderbooks, accounts, positions, orders, stops, TWAPs, fills, history,
+   collateral, funding, funding payments, candles, and vaults.
 2. **Lifecycle** — a transport-neutral REST snapshot source plus a WebSocket
    delta stream. Every socket open, including reconnect, enters `resyncing`;
    data is stale until the REST snapshot atomically replaces state.
@@ -17,6 +18,9 @@ The package has five deliberately separate layers:
    builds one atomic cancel-and-place transaction. Prices and sizes cross the
    SDK boundary as 1e9 fixed-point bigints. One controller must be created per
    account; failed submissions latch until authoritative reconciliation.
+6. **Authenticated account boundary** — canonical terms authentication,
+   account-scoped WebSocket snapshots, cursor pagination, and injected
+   transaction builders/executors. The client never receives private keys.
 
 ## Reconnect invariant
 

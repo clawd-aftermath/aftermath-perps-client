@@ -8,9 +8,13 @@ import {
 import { emptyPerpsData } from "./store.js";
 import type {
   Account,
+  AccountHistoryItem,
+  Candle,
   CollateralBalance,
   DeltaStream,
+  Fill,
   Funding,
+  FundingPayment,
   Market,
   MarketPrice,
   Order,
@@ -21,8 +25,10 @@ import type {
   Position,
   Side,
   SnapshotSource,
+  StopOrder,
   StreamConnection,
   StreamHandlers,
+  TwapOrder,
   Vault,
 } from "./types.js";
 
@@ -487,6 +493,92 @@ function normalizeAccount(value: unknown): {
   };
 }
 
+function normalizeStop(value: unknown, accountId: string): StopOrder | null {
+  const item = record(value);
+  if (item === null) return null;
+  const id = idFrom(item, "objectId", "id");
+  const marketId = idFrom(item, "marketId");
+  const side = sideValue(item.side);
+  const size = stringValue(item.size);
+  if (id === null || marketId === null || side === null || size === null) return null;
+  const slTp = record(item.slTp);
+  const nonSlTp = record(item.nonSlTp);
+  const stopLossPrice = stringValue(slTp?.stopLossPrice);
+  const takeProfitPrice = stringValue(slTp?.takeProfitPrice);
+  return {
+    id,
+    accountId,
+    marketId,
+    side,
+    triggerPrice: stopLossPrice ?? takeProfitPrice ?? stringValue(nonSlTp?.stopIndexPrice),
+    orderPrice: stringValue(record(item.limitOrder)?.price),
+    size,
+    kind: stopLossPrice !== null && takeProfitPrice !== null ? "stop-loss-take-profit" : stopLossPrice !== null ? "stop-loss" : takeProfitPrice !== null ? "take-profit" : "stop",
+    status: stringValue(item.orderState) ?? "unknown",
+    stopLossPrice,
+    takeProfitPrice,
+    expiresAt: safeIntegerValue(item.expiryTimestamp),
+    raw: value,
+  };
+}
+
+function normalizeTwap(value: unknown, accountId: string): TwapOrder | null {
+  const item = record(value);
+  const details = record(item?.details);
+  if (item === null || details === null) return null;
+  const id = idFrom(item, "twapOrderObjectId", "objectId", "id");
+  const marketId = idFrom(details, "marketId");
+  const side = sideValue(details.side);
+  const totalSize = stringValue(details.size);
+  const processed = stringValue(item.processedAmount);
+  if (id === null || marketId === null || side === null || totalSize === null || processed === null) return null;
+  const remaining = Decimal.max(0, decimal(totalSize).sub(decimal(processed)));
+  return {
+    id,
+    accountId,
+    marketId,
+    side,
+    totalSize,
+    remainingSize: decimalString(remaining),
+    firstRunExpiresAt: safeIntegerValue(details.firstRunExpireTimestamp),
+    expiresAt: safeIntegerValue(details.expireTimestamp),
+    lastExecutionAt: safeIntegerValue(item.lastExecutionTimestampMs),
+    status: stringValue(item.orderState) ?? "unknown",
+    raw: value,
+  };
+}
+
+function normalizeOrderHistory(value: unknown, accountId: string, ordinal = 0): AccountHistoryItem | null {
+  const item = record(value);
+  if (item === null) return null;
+  const timestamp = safeIntegerValue(item.timestamp);
+  const digest = stringValue(item.txDigest);
+  const marketId = idFrom(item, "marketId");
+  const eventType = stringValue(item.eventType);
+  if (timestamp === null || digest === null || marketId === null || eventType === null) return null;
+  return {
+    id: `${accountId}:${digest}:${eventType}:${marketId}:${timestamp}:${ordinal}`,
+    accountId,
+    type: eventType,
+    timestamp,
+    cursor: null,
+    raw: value,
+  };
+}
+
+function normalizeFill(value: unknown, accountId: string, ordinal = 0): Fill | null {
+  const item = record(value);
+  const eventType = stringValue(item?.eventType);
+  if (item === null || eventType === null || !/(^|::)Filled(Taker|Maker)Order$/.test(eventType)) return null;
+  const history = normalizeOrderHistory(value, accountId, ordinal);
+  const side = sideValue(item.side);
+  const price = stringValue(item.price);
+  const size = stringValue(item.size);
+  const marketId = idFrom(item, "marketId");
+  if (history === null || side === null || price === null || size === null || marketId === null) return null;
+  return { id: history.id, accountId, marketId, orderId: stringValue(item.orderId), side, price, size, timestamp: history.timestamp, pnl: stringValue(item.pnl), fees: stringValue(item.fees), raw: value };
+}
+
 function normalizeFunding(value: unknown, marketId: string): Funding {
   const item = record(value);
   const marketState = record(item?.marketState);
@@ -730,7 +822,20 @@ export function createAftermathNativeSnapshotSource(
 export type AftermathSubscription =
   | { readonly market: { readonly marketId: string } }
   | { readonly oracle: { readonly marketId: string } }
-  | { readonly orderbook: { readonly marketId: string } };
+  | { readonly orderbook: { readonly marketId: string } }
+  | {
+      readonly user: {
+        readonly accountId: bigint;
+        readonly withStopOrders: {
+          readonly walletAddress: string;
+          readonly bytes: string;
+          readonly signature: string;
+        } | undefined;
+      };
+    }
+  | { readonly userOrders: { readonly accountId: bigint } }
+  | { readonly userCollateralChanges: { readonly accountId: bigint } }
+  | { readonly marketCandles: { readonly marketId: string; readonly interval: string } };
 
 export interface WebSocketLike {
   onopen: ((event: unknown) => void) | null;
@@ -753,6 +858,88 @@ export function decodeAftermathMessage(message: unknown): readonly PerpsDelta[] 
   const envelope = record(message);
   if (envelope === null) {
     return [];
+  }
+
+  const userPayload = record(envelope.user);
+  if (userPayload !== null) {
+    const normalized = normalizeAccount(userPayload.account);
+    if (normalized !== null) {
+      const stops = array(userPayload.stopOrders)
+        .map((value) => normalizeStop(value, normalized.account.id))
+        .filter((value): value is StopOrder => value !== null);
+      const twaps = array(userPayload.twapOrders)
+        .map((value) => normalizeTwap(value, normalized.account.id))
+        .filter((value): value is TwapOrder => value !== null);
+      return [
+        { kind: "upsert", collection: "accounts", value: normalized.account },
+        { kind: "replaceScope", collection: "positions", accountId: normalized.account.id, values: normalized.positions },
+        { kind: "replaceScope", collection: "orders", accountId: normalized.account.id, values: normalized.orders },
+        ...(normalized.collateral === null ? [] : [{ kind: "upsert" as const, collection: "collateral" as const, value: normalized.collateral }]),
+        { kind: "replaceScope", collection: "stops", accountId: normalized.account.id, values: stops },
+        { kind: "replaceScope", collection: "twaps", accountId: normalized.account.id, values: twaps },
+      ];
+    }
+  }
+
+  const userOrdersPayload = record(envelope.userOrders);
+  if (userOrdersPayload !== null) {
+    const accountId = stringValue(userOrdersPayload.accountId);
+    if (accountId !== null && /^\d+$/.test(accountId)) {
+      return array(userOrdersPayload.orders).flatMap((value, ordinal) => {
+        const history = normalizeOrderHistory(value, accountId, ordinal);
+        const fill = normalizeFill(value, accountId, ordinal);
+        return [
+          ...(history === null ? [] : [{ kind: "upsert" as const, collection: "history" as const, value: history }]),
+          ...(fill === null ? [] : [{ kind: "upsert" as const, collection: "fills" as const, value: fill }]),
+        ];
+      });
+    }
+  }
+
+  const collateralPayload = record(envelope.userCollateralChanges);
+  if (collateralPayload !== null) {
+    const accountId = stringValue(collateralPayload.accountId);
+    if (accountId !== null && /^\d+$/.test(accountId)) {
+      return array(collateralPayload.collateralChanges).flatMap((value, ordinal) => {
+        const item = record(value);
+        const timestamp = safeIntegerValue(item?.timestamp);
+        const digest = stringValue(item?.txDigest);
+        const eventType = stringValue(item?.eventType);
+        if (timestamp === null || digest === null || eventType === null) return [];
+        const history: AccountHistoryItem = {
+          id: `${accountId}:${digest}:${eventType}:${timestamp}:${ordinal}`,
+          accountId,
+          type: eventType,
+          timestamp,
+          cursor: null,
+          raw: value,
+        };
+        const marketId = idFrom(item, "marketId");
+        const fundingPayment: FundingPayment | null = /(^|::)SettledFunding$/.test(eventType) && marketId !== null
+          ? { id: history.id, accountId, marketId, amount: stringValue(item?.collateralChange) ?? "0", timestamp, raw: value }
+          : null;
+        return [
+          { kind: "upsert" as const, collection: "history" as const, value: history },
+          ...(fundingPayment === null ? [] : [{ kind: "upsert" as const, collection: "fundingPayments" as const, value: fundingPayment }]),
+        ];
+      });
+    }
+  }
+
+  const candlesPayload = record(envelope.marketCandles);
+  if (candlesPayload !== null) {
+    const marketId = idFrom(candlesPayload, "marketId");
+    const interval = stringValue(candlesPayload.interval);
+    const point = record(candlesPayload.lastCandle);
+    const startedAt = safeIntegerValue(point?.timestamp);
+    const open = stringValue(point?.open);
+    const high = stringValue(point?.high);
+    const low = stringValue(point?.low);
+    const close = stringValue(point?.close);
+    if (marketId !== null && interval !== null && startedAt !== null && open !== null && high !== null && low !== null && close !== null) {
+      const candle: Candle = { id: `${marketId}:${interval}:${startedAt}`, marketId, interval, startedAt, open, high, low, close, volume: stringValue(point?.volume), raw: candlesPayload.lastCandle };
+      return [{ kind: "upsert", collection: "candles", value: candle }];
+    }
   }
 
   const orderbookPayload = record(envelope.orderbook);
@@ -838,6 +1025,17 @@ export function createAftermathWebSocketStream(
       const socket = createSocket(websocketUrl.toString());
       socket.onopen = () => {
         for (const subscriptionType of options.subscriptions) {
+          const accountId = "user" in subscriptionType
+            ? subscriptionType.user.accountId
+            : "userOrders" in subscriptionType
+              ? subscriptionType.userOrders.accountId
+              : "userCollateralChanges" in subscriptionType
+                ? subscriptionType.userCollateralChanges.accountId
+                : null;
+          if (accountId !== null && accountId < 0n) {
+            handlers.onError(new RangeError("subscription accountId must be non-negative"));
+            continue;
+          }
           socket.send(
             JSON.stringify(
               { action: "subscribe", subscriptionType },

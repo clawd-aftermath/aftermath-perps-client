@@ -77,10 +77,25 @@ export function createPerpsHooks(store: PerpsStore) {
       );
     },
     useAccount(accountId: string) {
-      return usePerpsSelector(
-        store,
-        (state) => state.accounts[accountId] ?? null,
-      );
+      return usePerpsSelector(store, (state) => state.accounts[accountId] ?? null);
+    },
+    usePosition(positionId: string) {
+      return usePerpsSelector(store, (state) => state.positions[positionId] ?? null);
+    },
+    useOrder(orderId: string) {
+      return usePerpsSelector(store, (state) => state.orders[orderId] ?? null);
+    },
+    useStop(stopId: string) {
+      return usePerpsSelector(store, (state) => state.stops[stopId] ?? null);
+    },
+    useTwap(twapId: string) {
+      return usePerpsSelector(store, (state) => state.twaps[twapId] ?? null);
+    },
+    useFill(fillId: string) {
+      return usePerpsSelector(store, (state) => state.fills[fillId] ?? null);
+    },
+    useCandle(candleId: string) {
+      return usePerpsSelector(store, (state) => state.candles[candleId] ?? null);
     },
   };
 }

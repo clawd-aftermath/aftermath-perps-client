@@ -22,6 +22,12 @@ export function emptyPerpsData(): PerpsData {
     orders: {},
     collateral: {},
     funding: {},
+    stops: {},
+    twaps: {},
+    fills: {},
+    history: {},
+    fundingPayments: {},
+    candles: {},
     vaults: {},
   };
 }
@@ -138,6 +144,13 @@ export function createPerpsStore(options: PerpsStoreOptions): PerpsStore {
       const collection = delta.collection;
       const nextCollection = { ...state[collection] } as Record<string, unknown>;
       delete nextCollection[delta.id];
+      state = { ...state, [collection]: nextCollection } as PerpsState;
+    } else if (delta.kind === "replaceScope") {
+      const collection = delta.collection;
+      const nextCollection = Object.fromEntries([
+        ...Object.entries(state[collection]).filter(([, value]) => value.accountId !== delta.accountId),
+        ...delta.values.map((value) => [value.id, value]),
+      ]);
       state = { ...state, [collection]: nextCollection } as PerpsState;
     } else {
       const current = state.orderbooks[delta.marketId];
@@ -256,6 +269,12 @@ export function createPerpsStore(options: PerpsStoreOptions): PerpsStore {
 
           state = {
             ...snapshot.data,
+            stops: state.stops,
+            twaps: state.twaps,
+            fills: state.fills,
+            history: state.history,
+            fundingPayments: state.fundingPayments,
+            candles: state.candles,
             connection: {
               ...state.connection,
               status: "resyncing",

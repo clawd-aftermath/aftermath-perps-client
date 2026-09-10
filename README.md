@@ -11,6 +11,10 @@ in headless services or React applications.
 - Explicit separation between local execution estimates and authoritative
   backend margin/collateral/liquidation/validity previews
 - Selector-aware optional React hooks
+- Normalized stops, TWAPs, fills, account history, funding payments, and candles
+- Authenticated `user`, `userOrders`, and `userCollateralChanges` subscriptions
+- Cursor pagination with cycle detection and fixed `Aftermath Terms and Conditions` authentication
+- Injected transaction build/execute actions with sponsorship metadata preserved
 - Optional atomic execution controller with caller-injected SDK account and signer
 - Guarded market-making planner, dry-run example, and reusable agent skill
 
@@ -90,8 +94,10 @@ The snapshot source uses these native routes:
 
 The stream uses only `/api/perpetuals/ws/updates`. The built-in decoder and
 subscription type support `market`, `oracle`, and `orderbook`
-subscriptions. Use `decodeMessage` with `onUnhandledMessage` when extending
-the transport for another server payload.
+subscriptions, plus authenticated `user`, `userOrders`, and
+`userCollateralChanges` subscriptions. Account subscription IDs are `bigint`
+and serialize with the protocol's exact `n` suffix. Use `decodeMessage` with
+`onUnhandledMessage` when extending the transport for another server payload.
 
 Account IDs are numeric Aftermath IDs, not capability object IDs. Construction
 accepts non-negative `bigint` values or unsigned base-10 strings and rejects
@@ -165,6 +171,24 @@ The local side estimates only orderbook execution. The backend result is
 authoritative for margin, collateral sufficiency, liquidation implications, and
 protocol validity. Aftermath previews may return `{ error }` with HTTP 200;
 the adapter converts that payload into `status: "error"`.
+
+## Authenticated account actions
+
+`authenticateAftermathTerms` signs only the fixed literal `Aftermath Terms and
+Conditions`; application display copy cannot replace the protocol boundary.
+`createPerpsActions` accepts injected builder, previewer, and executor objects.
+It has no key access and forwards the complete built envelope, including
+`sponsorSignature`. `createDryRunExecutor` deliberately rejects before signing
+or submission. Preview methods return explicit success/error unions.
+
+`paginateCursor` is a generic cursor helper. Aftermath timestamp-cursor history
+routes require a small caller-supplied `CursorPageSource` adapter. It forwards
+abort signals and rejects repeated cursors instead of looping forever.
+
+Append-only fill/history data received during a session is preserved across
+REST resyncs. Applications that need complete history after process restart
+must backfill the relevant REST history routes and apply their own retention
+policy.
 
 ## React
 

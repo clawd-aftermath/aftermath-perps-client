@@ -100,6 +100,39 @@ export interface Funding {
   readonly raw: unknown;
 }
 
+export interface StopOrder {
+  readonly id: string; readonly accountId: string; readonly marketId: string;
+  readonly side: Side; readonly triggerPrice: string | null; readonly orderPrice: string | null;
+  readonly size: string; readonly kind: "stop" | "take-profit" | "stop-loss" | "stop-loss-take-profit";
+  readonly status: string; readonly stopLossPrice: string | null; readonly takeProfitPrice: string | null;
+  readonly expiresAt: number | null; readonly raw: unknown;
+}
+export interface TwapOrder {
+  readonly id: string; readonly accountId: string; readonly marketId: string;
+  readonly side: Side; readonly totalSize: string; readonly remainingSize: string;
+  readonly firstRunExpiresAt: number | null; readonly expiresAt: number | null;
+  readonly lastExecutionAt: number | null; readonly status: string; readonly raw: unknown;
+}
+export interface Fill {
+  readonly id: string; readonly accountId: string; readonly marketId: string;
+  readonly orderId: string | null; readonly side: Side; readonly price: string;
+  readonly size: string; readonly timestamp: number | null; readonly raw: unknown;
+  readonly pnl: string | null; readonly fees: string | null;
+}
+export interface AccountHistoryItem {
+  readonly id: string; readonly accountId: string; readonly type: string;
+  readonly timestamp: number | null; readonly cursor: string | null; readonly raw: unknown;
+}
+export interface FundingPayment {
+  readonly id: string; readonly accountId: string; readonly marketId: string;
+  readonly amount: string; readonly timestamp: number | null; readonly raw: unknown;
+}
+export interface Candle {
+  readonly id: string; readonly marketId: string; readonly interval: string;
+  readonly startedAt: number; readonly open: string; readonly high: string;
+  readonly low: string; readonly close: string; readonly volume: string | null; readonly raw: unknown;
+}
+
 export interface Vault {
   readonly id: string;
   readonly name: string | null;
@@ -120,6 +153,12 @@ export interface PerpsData {
   readonly orders: EntityMap<Order>;
   readonly collateral: EntityMap<CollateralBalance>;
   readonly funding: EntityMap<Funding>;
+  readonly stops: EntityMap<StopOrder>;
+  readonly twaps: EntityMap<TwapOrder>;
+  readonly fills: EntityMap<Fill>;
+  readonly history: EntityMap<AccountHistoryItem>;
+  readonly fundingPayments: EntityMap<FundingPayment>;
+  readonly candles: EntityMap<Candle>;
   readonly vaults: EntityMap<Vault>;
 }
 
@@ -153,7 +192,17 @@ export interface SnapshotSource {
 }
 
 export type CollectionName = Exclude<keyof PerpsData, "orderbooks">;
-export type CollectionEntity<K extends CollectionName> = PerpsData[K][string];
+export type CollectionEntity<K extends CollectionName> = NonNullable<PerpsData[K][string]>;
+
+export type AccountScopedCollection = "positions" | "orders" | "stops" | "twaps";
+type ReplaceScopeDelta = {
+  [K in AccountScopedCollection]: {
+    readonly kind: "replaceScope";
+    readonly collection: K;
+    readonly accountId: string;
+    readonly values: readonly NonNullable<PerpsData[K][string]>[];
+  };
+}[AccountScopedCollection];
 
 type UpsertDelta = {
   [K in CollectionName]: {
@@ -175,6 +224,7 @@ type PatchDelta = {
 export type PerpsDelta =
   | UpsertDelta
   | PatchDelta
+  | ReplaceScopeDelta
   | {
       readonly kind: "remove";
       readonly collection: keyof PerpsData;
