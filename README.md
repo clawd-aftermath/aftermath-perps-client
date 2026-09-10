@@ -11,7 +11,8 @@ in headless services or React applications.
 - Explicit separation between local execution estimates and authoritative
   backend margin/collateral/liquidation/validity previews
 - Selector-aware optional React hooks
-- No wallet, signing, transaction submission, or deployment behavior
+- Optional atomic execution controller with caller-injected SDK account and signer
+- Guarded market-making planner, dry-run example, and reusable agent skill
 
 > **Status:** v0.1.0. This package is an integration primitive, not a trading
 > bot. Local estimates are not executable quotes and do not establish margin
@@ -29,9 +30,13 @@ For React hooks:
 npm install react
 ```
 
-The core adapter is structural and does not import `aftermath-ts-sdk` at
-runtime. Consumers can pass an SDK market client to the preview adapter without
-installing an SDK peer on behalf of this package.
+The adapters are structural and do not import `aftermath-ts-sdk` at runtime.
+Consumers inject SDK market/account clients and their own transaction executor.
+This package never reads keys or submits anything unless the caller explicitly
+provides an executor and invokes it.
+
+This is a community-maintained developer package published by
+`clawd-aftermath`, not an official Aftermath SDK release.
 
 This package publishes ESM only. Use `import`; CommonJS `require()` is not a
 supported entry point.
@@ -179,6 +184,34 @@ unrelated store updates do not rerender entity hooks. Collection/filter
 selectors cache results by immutable collection identity. Importing the root
 package does not import React.
 
+## Market-making starter
+
+`planQuoteCycle` validates operator-supplied quotes; it does not invent a
+strategy or select profitable spreads. `createExecutionController` builds
+Aftermath's atomic cancel-and-place transaction and permits only one in-flight
+operation per controller. Create exactly one controller per account. A failed
+or ambiguous submission latches until the caller reconciles authoritative
+state and calls `acknowledgeReconciled()`.
+
+Prices and sizes sent to Aftermath use 1e9 fixed-point bigints. Pass the
+human-decimal values returned by `market.tickSize()` and `market.lotSize()` to
+the planner—not the already-scaled `marketParams` bigints. Use `PostOnly`
+(`orderType: 2`) for resting maker quotes, and independently ensure prices do
+not cross the live market book. The planner only prevents replacement quotes
+from crossing each other.
+
+Cancel exact resting IDs from a fresh authoritative snapshot with
+`cancelOrders`. Use `getCancelOrdersPreview` for its `collateralChange` values.
+Before quoting, pre-allocate collateral and use `getPlaceLimitOrderPreview` and
+`getMaxOrderSize` for authoritative margin and size validation.
+
+Start with the [dry-run example](./examples/market-maker.ts), then follow the
+[market-making skill](./skills/aftermath-perps-market-making/SKILL.md). It
+covers snapshot/stream recovery, fair-price freshness, rounding, client IDs,
+atomic replacement, reconciliation, position limits, and a cancel-all kill
+switch. Test ambiguous outcomes, reconnects, partial fills, and shutdown with
+small limits before enabling live submission.
+
 ## API semantics
 
 This package follows the inspected Aftermath 5.0.2 declarations and checked
@@ -196,9 +229,11 @@ wire fixtures:
 
 ## Examples
 
-- [Headless TypeScript](https://github.com/AftermathFinance/aftermath-perps-client/blob/main/examples/headless.ts)
-- [Minimal React](https://github.com/AftermathFinance/aftermath-perps-client/blob/main/examples/react.tsx)
-- [Architecture](https://github.com/AftermathFinance/aftermath-perps-client/blob/main/docs/architecture.md)
+- [Headless TypeScript](./examples/headless.ts)
+- [Minimal React](./examples/react.tsx)
+- [Market-maker dry run](./examples/market-maker.ts)
+- [Market-making skill](./skills/aftermath-perps-market-making/SKILL.md)
+- [Architecture](./docs/architecture.md)
 
 ## Acknowledgement
 

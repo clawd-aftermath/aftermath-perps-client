@@ -1,4 +1,6 @@
 export * from "./decimal.js";
+export * from "./execution.js";
+export * from "./market-maker.js";
 export * from "./orderbook.js";
 export * from "./preview.js";
 export * from "./selectors.js";

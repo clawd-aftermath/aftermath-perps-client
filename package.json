@@ -23,6 +23,9 @@
   },
   "files": [
     "dist",
+    "examples",
+    "skills",
+    "docs",
     "README.md",
     "LICENSE",
     "NOTICE"
@@ -44,23 +47,27 @@
     "orderbook",
     "websocket"
   ],
-  "author": "Aftermath Finance",
+  "author": "clawd-aftermath",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AftermathFinance/aftermath-perps-client.git"
+    "url": "git+https://github.com/clawd-aftermath/aftermath-perps-client.git"
   },
   "bugs": {
-    "url": "https://github.com/AftermathFinance/aftermath-perps-client/issues"
+    "url": "https://github.com/clawd-aftermath/aftermath-perps-client/issues"
   },
-  "homepage": "https://github.com/AftermathFinance/aftermath-perps-client#readme",
+  "homepage": "https://github.com/clawd-aftermath/aftermath-perps-client#readme",
   "dependencies": {
     "decimal.js": "10.6.0"
   },
   "peerDependencies": {
+    "aftermath-ts-sdk": ">=5.0.2 <6",
     "react": ">=18 <20"
   },
   "peerDependenciesMeta": {
+    "aftermath-ts-sdk": {
+      "optional": true
+    },
     "react": {
       "optional": true
     }
@@ -69,6 +76,7 @@
     "@biomejs/biome": "2.3.13",
     "@types/node": "24.3.1",
     "@types/react": "19.1.12",
+    "aftermath-ts-sdk": "^5.0.2",
     "react": "19.1.1",
     "tsup": "8.5.0",
     "typescript": "5.9.2",

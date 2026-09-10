@@ -1,6 +1,6 @@
 # Architecture
 
-The package has four deliberately separate layers:
+The package has five deliberately separate layers:
 
 1. **Domain store** — immutable snapshots for markets, prices/oracles,
    orderbooks, accounts, positions, orders, collateral, funding, and vaults.
@@ -13,6 +13,10 @@ The package has four deliberately separate layers:
 4. **Authoritative preview** — a structural adapter around Aftermath SDK/API
    preview calls. Preview `{ error }` payloads are failures even when HTTP
    status is 200.
+5. **Guarded execution** — operator-supplied quotes are checked before the SDK
+   builds one atomic cancel-and-place transaction. Prices and sizes cross the
+   SDK boundary as 1e9 fixed-point bigints. One controller must be created per
+   account; failed submissions latch until authoritative reconciliation.
 
 ## Reconnect invariant
 

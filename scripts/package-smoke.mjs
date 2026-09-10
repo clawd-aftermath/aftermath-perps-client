@@ -60,6 +60,8 @@ import * as react from "aftermath-perps-client/react";
 const checks = [
   typeof core.createPerpsStore,
   typeof core.simulateOrderbook,
+  typeof core.createExecutionController,
+  typeof core.planQuoteCycle,
   typeof aftermath.createAftermathNativeSnapshotSource,
   typeof aftermath.createAftermathWebSocketStream,
   typeof react.createPerpsHooks,
